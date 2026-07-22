@@ -1,0 +1,141 @@
+.timeline {
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: var(--space-4);
+  height: var(--timeline-height);
+  z-index: var(--z-panel);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-1);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  animation: artix-fade-up var(--duration) var(--ease-out);
+}
+
+/* Do not slide under the inspector. */
+.app[data-inspector='true'] .timeline {
+  right: calc(var(--inspector-width) + var(--space-6));
+}
+
+.timeline__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+}
+
+.timeline__range {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.timeline__reset {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--accent);
+}
+
+.timeline__reset:hover {
+  color: var(--accent-bright);
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ track */
+
+.timeline__track {
+  position: relative;
+  flex: 1;
+  min-height: 34px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.timeline__histogram {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.timeline__bar {
+  flex: 1;
+  min-height: 1px;
+  border-radius: 1px 1px 0 0;
+  background: var(--space-500);
+  transition: background var(--duration) var(--ease-out);
+}
+
+.timeline__bar.is-active {
+  background: var(--accent-dim);
+}
+
+/* ----------------------------------------------------------------- window */
+
+.timeline__window {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(108, 198, 255, 0.09);
+  border-top: 1px solid var(--border-accent);
+  border-bottom: 1px solid var(--border-accent);
+  cursor: grab;
+}
+
+.timeline__window:active {
+  cursor: grabbing;
+}
+
+.timeline__handle {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  /* Wide invisible hit area around a thin visible line — the line alone would
+     be nearly impossible to grab. */
+  width: 14px;
+  margin-left: -7px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.timeline__handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  width: 2px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.timeline__handle:hover::before,
+.timeline__handle:active::before {
+  background: var(--accent-bright);
+}
+
+/* ------------------------------------------------------------------- axis */
+
+.timeline__axis {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-disabled);
+}
+
+.timeline__axis-hint {
+  font-family: var(--font-sans);
+  color: var(--text-tertiary);
+}

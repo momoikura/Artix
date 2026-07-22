@@ -1,0 +1,54 @@
+# Dependencies & build output
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Mobile icon sets — Artix is desktop-only; regenerate with `npm run icons`
+# if a mobile target is ever added.
+src-tauri/icons/android/
+src-tauri/icons/ios/
+
+# The 1024px master is regenerated in a second by `npm run icons`; the
+# platform icons under src-tauri/icons ARE committed so a fresh clone can run
+# `npm run build:desktop` without extra steps.
+assets/icon.png
+
+# Local user data. Never commit a library — it contains real session content.
+.artix-data/
+*.db
+*.db-wal
+*.db-shm
+artix.db*
+
+# Secrets — belt and braces; Artix itself needs none.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+.npmrc
+credentials.json
+.credentials.json
+
+# Per-machine Claude Code settings — contains absolute local paths.
+# `.claude/launch.json` IS committed: it is generic and useful to contributors.
+.claude/settings.local.json
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*

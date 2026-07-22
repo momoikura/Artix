@@ -1,0 +1,157 @@
+/**
+ * Design tokens.
+ *
+ * Artix has exactly one visual idea: the UI is instrumentation floating in
+ * front of a window onto space. Everything here follows from that — surfaces
+ * are translucent and cool-tinted, type is quiet, and nothing competes with the
+ * galaxy for attention.
+ */
+
+:root {
+  /* ---- palette -------------------------------------------------------- */
+  /* Cool near-blacks, never pure black: the canvas behind is already dark and
+     pure #000 panels read as holes rather than glass. */
+  --void: #03040a;
+  --space-900: #070a14;
+  --space-800: #0b0f1c;
+  --space-700: #111726;
+  --space-600: #1a2133;
+  --space-500: #242c41;
+  --space-400: #333d55;
+
+  --text-primary: #e8edf7;
+  --text-secondary: #a4b0c8;
+  --text-tertiary: #6c7a94;
+  --text-disabled: #4a5570;
+
+  --accent: #6cc6ff;
+  --accent-bright: #9adcff;
+  --accent-dim: #3d7ea8;
+  --accent-glow: rgba(108, 198, 255, 0.35);
+
+  --success: #5fd68a;
+  --warn: #f2c55c;
+  --danger: #ff7a8a;
+
+  /* ---- surfaces ------------------------------------------------------- */
+  /* Alpha, not opaque: the galaxy must remain faintly visible behind panels. */
+  --surface-1: rgba(11, 15, 28, 0.72);
+  --surface-2: rgba(17, 23, 38, 0.86);
+  --surface-3: rgba(26, 33, 51, 0.92);
+  --surface-solid: #0b0f1c;
+
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-accent: rgba(108, 198, 255, 0.4);
+
+  /* ---- typography ----------------------------------------------------- */
+  --font-sans: 'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Helvetica Neue', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace,
+    monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 17px;
+  --text-xl: 22px;
+  --text-2xl: 30px;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.55;
+  --leading-relaxed: 1.7;
+
+  /* Wide tracking on small caps is what makes the HUD read as instrumentation. */
+  --tracking-wide: 0.08em;
+  --tracking-wider: 0.14em;
+
+  /* ---- spacing (4px base) --------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  --radius-sm: 5px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 999px;
+
+  /* ---- elevation ------------------------------------------------------ */
+  /* Two-layer shadows: a tight contact shadow plus a wide ambient one. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.45), 0 20px 60px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 0 1px var(--border-accent), 0 0 28px var(--accent-glow);
+
+  --blur: blur(22px) saturate(140%);
+  --blur-heavy: blur(40px) saturate(160%);
+
+  /* ---- motion --------------------------------------------------------- */
+  /* Apple-ish: nothing is linear, everything decelerates. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-fast: 120ms;
+  --duration: 220ms;
+  --duration-slow: 420ms;
+  --duration-cinematic: 720ms;
+
+  /* ---- layout --------------------------------------------------------- */
+  --hud-height: 52px;
+  --inspector-width: 340px;
+  --timeline-height: 92px;
+  --z-canvas: 0;
+  --z-labels: 10;
+  --z-hud: 20;
+  --z-panel: 30;
+  --z-overlay: 40;
+  --z-menu: 50;
+  --z-toast: 60;
+}
+
+/**
+ * Alternate themes. `void` strips every tint for maximum contrast with the
+ * galaxy; `observatory` warms the UI for long reading sessions.
+ */
+:root[data-theme='void'] {
+  --surface-1: rgba(0, 0, 0, 0.78);
+  --surface-2: rgba(4, 5, 10, 0.9);
+  --surface-3: rgba(10, 12, 20, 0.95);
+  --accent: #ffffff;
+  --accent-bright: #ffffff;
+  --accent-glow: rgba(255, 255, 255, 0.22);
+}
+
+:root[data-theme='observatory'] {
+  --text-primary: #f2ece0;
+  --text-secondary: #c3b8a6;
+  --text-tertiary: #8b8271;
+  --accent: #ffb877;
+  --accent-bright: #ffd0a3;
+  --accent-glow: rgba(255, 184, 119, 0.3);
+  --surface-1: rgba(22, 17, 12, 0.72);
+  --surface-2: rgba(30, 23, 16, 0.88);
+  --surface-3: rgba(40, 31, 22, 0.92);
+}
+
+/**
+ * Respect the OS preference. The galaxy's own motion is handled separately in
+ * settings, because some users want a still starfield but animated UI.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 1ms;
+    --duration: 1ms;
+    --duration-slow: 1ms;
+    --duration-cinematic: 1ms;
+  }
+}

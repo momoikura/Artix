@@ -1,0 +1,152 @@
+/**
+ * Claude Code session discovery.
+ *
+ * Claude Code keeps its transcripts as line-delimited JSON under the user's
+ * home directory:
+ *
+ *   ~/.claude/projects/<encoded-project-path>/<session-uuid>.jsonl
+ *
+ * Nothing here depends on an undocumented API — it reads files the user
+ * already has, and every path is shown before anything is imported. Artix never
+ * watches this directory in the background; a scan only happens when asked.
+ *
+ * IMPORTANT: the directory name is *not* reliably decodable. Claude Code
+ * replaces both `:` and the path separator with `-`, so
+ * `C--Users-me-Desktop-my-app` is ambiguous between `my-app` and `my/app`.
+ * The real working directory is carried inside the file as `cwd`, so the
+ * importer uses that and this module treats the folder name as a display hint
+ * only.
+ */
+
+import { isTauri } from '../storage/tauri-adapter.ts';
+import type { StorageAdapter, DiscoveredFile } from '../storage/adapter.ts';
+import type { ImportSource } from '../importers/types.ts';
+
+/** Where Claude Code stores transcripts, relative to the home directory. */
+export const CLAUDE_PROJECTS_SUBPATH = '.claude/projects';
+
+export interface DiscoveredSession {
+  /** Absolute path to the `.jsonl` transcript. */
+  path: string;
+  /** The session UUID, taken from the file name. */
+  id: string;
+  /** Best-effort project label derived from the containing directory. */
+  projectHint: string;
+  bytes: number;
+  modifiedAt: number;
+}
+
+/**
+ * Best-effort reversal of the directory encoding, for display only.
+ *
+ * `C--Users-me-Desktop-app` → `C:\Users\me\Desktop\app`. Ambiguous whenever a
+ * real folder name contains a hyphen, which is why this result is never used as
+ * the authoritative project — only as a label when a file carries no `cwd`.
+ */
+export function decodeProjectDir(name: string): string {
+  // A leading single letter followed by `--` is a Windows drive.
+  const drive = /^([A-Za-z])--(.*)$/.exec(name);
+  if (drive) return `${drive[1]!.toUpperCase()}:\\${drive[2]!.replace(/-/g, '\\')}`;
+  // Otherwise assume a POSIX absolute path.
+  return `/${name.replace(/^-+/, '').replace(/-/g, '/')}`;
+}
+
+/** Last path segment of the decoded directory — a readable project label. */
+export function projectHintFromDir(name: string): string {
+  const decoded = decodeProjectDir(name);
+  const parts = decoded.replace(/[\\/]+$/, '').split(/[\\/]/);
+  return parts[parts.length - 1] || name;
+}
+
+/**
+ * Locate Claude Code's transcript directory.
+ *
+ * Returns null when it cannot be determined (browser build, or the user has
+ * never run Claude Code).
+ */
+export async function claudeProjectsDir(storage: StorageAdapter): Promise<string | null> {
+  if (!isTauri()) return null;
+  try {
+    const { homeDir, join } = await import('@tauri-apps/api/path');
+    const home = await homeDir();
+    const dir = await join(home, '.claude', 'projects');
+
+    // `discoverFiles` fails cleanly when the directory is absent, which is the
+    // cheapest existence probe available to us.
+    const probe = await storage.discoverFiles(dir, ['jsonl'], { maxDepth: 1, maxFiles: 1 });
+    return probe.ok ? dir : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Every transcript under the Claude Code store, newest first. */
+export async function discoverClaudeSessions(
+  storage: StorageAdapter,
+  root?: string,
+): Promise<DiscoveredSession[]> {
+  const dir = root ?? (await claudeProjectsDir(storage));
+  if (!dir) return [];
+
+  const found = await storage.discoverFiles(dir, ['jsonl'], { maxDepth: 3, maxFiles: 20_000 });
+  if (!found.ok) return [];
+
+  return found.value
+    .map((file: DiscoveredFile) => {
+      const normalised = file.path.replace(/\\/g, '/');
+      const segments = normalised.split('/');
+      const parentDir = segments[segments.length - 2] ?? '';
+      return {
+        path: file.path,
+        id: file.name.replace(/\.jsonl$/i, ''),
+        projectHint: projectHintFromDir(parentDir),
+        bytes: file.bytes,
+        modifiedAt: file.modifiedAt,
+      };
+    })
+    .sort((a, b) => b.modifiedAt - a.modifiedAt);
+}
+
+/**
+ * Read discovered transcripts into import sources.
+ *
+ * `onProgress` fires per file because a 65 MB store takes a noticeable moment
+ * and silent work looks like a hang.
+ */
+export async function readClaudeSessions(
+  storage: StorageAdapter,
+  sessions: readonly DiscoveredSession[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ sources: ImportSource[]; failed: string[] }> {
+  const sources: ImportSource[] = [];
+  const failed: string[] = [];
+
+  for (const [index, session] of sessions.entries()) {
+    const contents = await storage.readTextFile(session.path);
+    if (contents.ok) {
+      sources.push({
+        reference: session.path,
+        name: `${session.projectHint}-${session.id.slice(0, 8)}.jsonl`,
+        content: contents.value,
+        modifiedAt: session.modifiedAt,
+      });
+    } else {
+      failed.push(session.path);
+    }
+    onProgress?.(index + 1, sessions.length);
+  }
+
+  return { sources, failed };
+}
+
+/** Human summary of a scan, for the confirmation step. */
+export function describeScan(sessions: readonly DiscoveredSession[]): string {
+  if (sessions.length === 0) return 'No Claude Code transcripts found.';
+
+  const projects = new Set(sessions.map((s) => s.projectHint));
+  const megabytes = sessions.reduce((sum, s) => sum + s.bytes, 0) / 1_048_576;
+
+  return `${sessions.length} transcript${sessions.length === 1 ? '' : 's'} across ${
+    projects.size
+  } project${projects.size === 1 ? '' : 's'} · ${megabytes.toFixed(1)} MB`;
+}
