@@ -10,6 +10,7 @@
 ![frontend](https://img.shields.io/badge/React_18-TypeScript-3178c6)
 ![renderer](https://img.shields.io/badge/Three.js-WebGL2-000000)
 ![storage](https://img.shields.io/badge/SQLite-FTS5-044a64)
+[![CI](https://github.com/momoikura/Artix/actions/workflows/ci.yml/badge.svg)](https://github.com/momoikura/Artix/actions/workflows/ci.yml)
 ![tests](https://img.shields.io/badge/tests-185%20passing-brightgreen)
 ![offline](https://img.shields.io/badge/network%20calls-0-success)
 
@@ -74,8 +75,8 @@ reorganises chronologically — computed in the vertex shader, so it costs nothi
 ## Install
 
 ```bash
-git clone https://github.com/<you>/artix.git
-cd artix
+git clone https://github.com/momoikura/Artix.git
+cd Artix
 npm install
 ```
 

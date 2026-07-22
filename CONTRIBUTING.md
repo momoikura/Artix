@@ -15,9 +15,17 @@ For the desktop backend you also need the [Rust toolchain](https://rustup.rs)
 and your platform's Tauri prerequisites — see [docs/INSTALL.md](docs/INSTALL.md).
 
 ```bash
+npm run build                 # REQUIRED before any cargo command, see below
 npm run dev:desktop
 cd src-tauri && cargo test    # 23 storage tests
 ```
+
+> **Build the frontend before running cargo on a fresh clone.**
+> `tauri::generate_context!()` validates `frontendDist` at *compile* time, and
+> `dist/` is gitignored. Without it you get a confusing
+> `proc macro panicked … "../dist" but this path doesn't exist`.
+> `npm run dev:desktop` and `npm run build:desktop` handle this for you; bare
+> `cargo check` / `cargo test` / `cargo clippy` do not.
 
 ## Before opening a PR
 
