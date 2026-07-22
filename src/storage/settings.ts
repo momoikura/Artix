@@ -36,9 +36,19 @@ export interface GalaxySettings {
 
 export interface ImportSettings {
   /**
-   * Directories Artix watches for Claude Code session files. Nothing is read
-   * until the user explicitly triggers a scan — Artix never tails files in the
-   * background without being asked.
+   * Keep the library in step with Claude Code automatically: an incremental
+   * scan shortly after launch, then on an interval while Artix is open.
+   *
+   * Only reads `~/.claude/projects`, only imports transcripts whose
+   * modification time changed, and never sends anything anywhere. Turn it off
+   * to make importing entirely manual.
+   */
+  autoSync: boolean;
+  /** Minutes between background syncs. */
+  autoSyncMinutes: number;
+  /**
+   * Extra directories the user has pointed Artix at. Scanned only when a scan
+   * is explicitly triggered.
    */
   watchedFolders: string[];
   /** Re-scan watched folders on launch. */
@@ -80,6 +90,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     respectReducedMotion: true,
   },
   import: {
+    autoSync: true,
+    autoSyncMinutes: 10,
     watchedFolders: [],
     scanOnLaunch: false,
     extensions: ['jsonl', 'json', 'md', 'markdown', 'txt'],

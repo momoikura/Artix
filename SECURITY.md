@@ -12,8 +12,12 @@ server-side injection) do not apply. What remains is worth being precise about.
 credentials pasted into a terminal, internal hostnames, proprietary code and
 customer names. Artix treats the library as sensitive by default:
 
-- The database never leaves your machine. There is no sync, no backup service,
-  no crash reporter, no analytics.
+- The database never leaves your machine. There is no cloud sync, no backup
+  service, no crash reporter, no analytics.
+- Artix does read `~/.claude/projects` on a timer when automatic sync is enabled
+  (Settings → Import, on by default). That is a **local file read into a local
+  database** — it is the only directory scanned, only changed files are read,
+  and nothing is transmitted. Disable it for fully manual importing.
 - The desktop backend links **no HTTP client**. There is no code path capable of
   making a network request.
 - `.gitignore` excludes `*.db` and `.artix-data/` so a library cannot be

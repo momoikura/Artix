@@ -102,6 +102,33 @@ export function Hud(): JSX.Element {
       </div>
 
       <div className="hud__actions">
+        {/* Always reachable. Previously importing was only offered on the empty
+            state, so the moment a library had one session the feature became
+            invisible and the only route left was a shortcut nobody would guess. */}
+        <button
+          className="btn btn--primary hud__import"
+          onClick={() =>
+            void commands.run('artix.importClaudeCode', {
+              selectedIds: [],
+              inSession: false,
+              inSearch: false,
+            })
+          }
+          title="Scan ~/.claude/projects and import every session (Ctrl+Shift+I)"
+        >
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+            <path
+              d="M8 2v8M8 10L5 7M8 10l3-3M3 12.5h10"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Import sessions
+        </button>
+
         {busy && (
           <div className="hud__job" title={busyLabel}>
             <div className="hud__job-bar">

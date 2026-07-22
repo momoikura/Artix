@@ -87,6 +87,96 @@ describe('memory storage adapter', () => {
     }
   });
 
+  /**
+   * Auto-sync re-reads a transcript that has grown since last time. Without
+   * identity on (source, sourceRef) each sync would create another star, and
+   * the galaxy would fill with copies of the same session.
+   */
+  describe('re-syncing a growing session', () => {
+    const grown = (title: string, extraMessages: number) =>
+      make(title, {
+        source: 'core:claude-jsonl',
+        sourceRef: 'session-uuid-1',
+        messages: Array.from({ length: 1 + extraMessages }, (_, i) => ({
+          seq: i,
+          role: 'user' as const,
+          content: `message ${i}`,
+          createdAt: NOW,
+          tokenEstimate: 0,
+          toolName: null,
+        })),
+      });
+
+    it('updates in place instead of duplicating', async () => {
+      const storage = await seeded([grown('Session', 0)]);
+
+      const again = await storage.saveSessions([grown('Session', 5)]);
+      expect(again.ok).toBe(true);
+      if (again.ok) {
+        expect(again.value.imported).toHaveLength(0);
+        expect(again.value.updated).toHaveLength(1);
+      }
+
+      const list = await storage.listSessions();
+      expect(list.ok && list.value).toHaveLength(1);
+      // The refreshed record carries the newer content.
+      if (list.ok) expect(list.value[0]!.messageCount).toBe(6);
+    });
+
+    it('reports no change when the transcript is untouched', async () => {
+      const storage = await seeded([grown('Session', 2)]);
+      const again = await storage.saveSessions([grown('Session', 2)]);
+      if (again.ok) {
+        expect(again.value.updated).toHaveLength(0);
+        expect(again.value.duplicates).toHaveLength(1);
+      }
+    });
+
+    it('never destroys user notes or pinned state', async () => {
+      const first = grown('Session', 0);
+      const storage = await seeded([first]);
+
+      await storage.updateSession(first.session.id, {
+        notes: 'Remember: the retry logic is load-bearing.',
+        pinned: true,
+      });
+
+      await storage.saveSessions([grown('Session', 9)]);
+
+      const list = await storage.listSessions();
+      expect(list.ok).toBe(true);
+      if (list.ok) {
+        expect(list.value).toHaveLength(1);
+        expect(list.value[0]!.notes).toBe('Remember: the retry logic is load-bearing.');
+        expect(list.value[0]!.pinned).toBe(true);
+        // …while still picking up the new content.
+        expect(list.value[0]!.messageCount).toBe(10);
+      }
+    });
+
+    it('keeps distinct sessions distinct', async () => {
+      const storage = await seeded([grown('Session', 0)]);
+      const other = make('Other', { source: 'core:claude-jsonl', sourceRef: 'session-uuid-2' });
+
+      const result = await storage.saveSessions([other]);
+      if (result.ok) expect(result.value.imported).toHaveLength(1);
+
+      const list = await storage.listSessions();
+      expect(list.ok && list.value).toHaveLength(2);
+    });
+
+    it('falls back to hash dedupe when the source gives no id', async () => {
+      const noRef = make('Anonymous', { source: 'core:text' });
+      const storage = await seeded([noRef]);
+
+      const again = await storage.saveSessions([make('Anonymous', { source: 'core:text' })]);
+      if (again.ok) {
+        expect(again.value.imported).toHaveLength(0);
+        expect(again.value.duplicates).toHaveLength(1);
+      }
+    });
+  });
+
   it('orders sessions newest first', async () => {
     const storage = await seeded([
       make('old', { startedAt: NOW - 30 * DAY }),

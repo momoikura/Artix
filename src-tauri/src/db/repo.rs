@@ -94,6 +94,131 @@ pub fn insert_session(
     Ok(s.id.clone())
 }
 
+/// What `upsert_session` did, so the UI can report honestly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpsertOutcome {
+    Inserted,
+    /// Same session id, new content — the record was refreshed in place.
+    Updated,
+    /// Byte-identical to what is already stored; nothing was written.
+    Unchanged,
+}
+
+/// Insert, or refresh an existing session identified by `(source, source_ref)`.
+///
+/// This is what makes automatic sync possible. A live transcript grows while
+/// you work, so its content hash changes on every scan — plain hash dedupe
+/// would create a fresh star each time. Matching on the tool's own session id
+/// instead means a session is one record for its whole life.
+///
+/// User-authored fields (`notes`, `pinned`) survive the refresh. Re-importing
+/// must never destroy something only the human could have written.
+pub fn upsert_session(
+    tx: &Transaction<'_>,
+    detail: &SessionDetail,
+    doc: &SearchDocument,
+) -> Result<(String, UpsertOutcome)> {
+    let s = &detail.session;
+
+    let Some(source_ref) = s.source_ref.as_deref().filter(|r| !r.is_empty()) else {
+        // No stable identity to match on; fall back to hash dedupe.
+        let id = insert_session(tx, detail, doc)?;
+        return Ok((id, UpsertOutcome::Inserted));
+    };
+
+    let existing: Option<(String, String, String, i64)> = tx
+        .query_row(
+            "SELECT id, content_hash, notes, pinned FROM sessions
+             WHERE source = ?1 AND source_ref = ?2",
+            params![s.source, source_ref],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .optional()?;
+
+    let Some((existing_id, existing_hash, existing_notes, existing_pinned)) = existing else {
+        let id = insert_session(tx, detail, doc)?;
+        return Ok((id, UpsertOutcome::Inserted));
+    };
+
+    if existing_hash == s.content_hash {
+        return Ok((existing_id, UpsertOutcome::Unchanged));
+    }
+
+    // Replace the derived content, keep the identity and anything hand-written.
+    tx.execute(
+        "DELETE FROM messages WHERE session_id = ?1",
+        params![existing_id],
+    )?;
+    tx.execute(
+        "DELETE FROM artifacts WHERE session_id = ?1",
+        params![existing_id],
+    )?;
+    tx.execute(
+        "DELETE FROM files WHERE session_id = ?1",
+        params![existing_id],
+    )?;
+
+    tx.execute(
+        "UPDATE sessions SET
+            title = ?2, project = ?3, folder = ?4, summary = ?5, language = ?6,
+            status = ?7, kind = ?8, complexity = ?9, importance = ?10,
+            started_at = ?11, ended_at = ?12, updated_at = ?13,
+            message_count = ?14, file_count = ?15, artifact_count = ?16,
+            token_estimate = ?17, content_hash = ?18
+         WHERE id = ?1",
+        params![
+            existing_id,
+            s.title,
+            s.project,
+            s.folder,
+            s.summary,
+            s.language,
+            s.status,
+            s.kind,
+            s.complexity,
+            s.importance,
+            s.started_at,
+            s.ended_at,
+            s.updated_at,
+            s.message_count,
+            s.file_count,
+            s.artifact_count,
+            s.token_estimate,
+            s.content_hash
+        ],
+    )?;
+
+    // Notes and pinned are user data; restore whatever was there.
+    tx.execute(
+        "UPDATE sessions SET notes = ?2, pinned = ?3 WHERE id = ?1",
+        params![existing_id, existing_notes, existing_pinned],
+    )?;
+
+    // Children carry the *old* session id from the caller's aggregate, so they
+    // are re-pointed at the record being refreshed.
+    let mut rebased = detail.clone();
+    rebased.session.id = existing_id.clone();
+    for m in &mut rebased.messages {
+        m.session_id = existing_id.clone();
+    }
+    for a in &mut rebased.artifacts {
+        a.session_id = existing_id.clone();
+    }
+    for f in &mut rebased.files {
+        f.session_id = existing_id.clone();
+    }
+
+    write_children(tx, &rebased)?;
+    set_tags(tx, &existing_id, &s.tags)?;
+    set_technologies(tx, &existing_id, &s.technologies)?;
+
+    let mut fresh_doc = doc.clone();
+    fresh_doc.id = existing_id.clone();
+    upsert_fts(tx, &fresh_doc)?;
+
+    Ok((existing_id, UpsertOutcome::Updated))
+}
+
 fn write_children(tx: &Transaction<'_>, detail: &SessionDetail) -> Result<()> {
     {
         let mut stmt = tx.prepare_cached(

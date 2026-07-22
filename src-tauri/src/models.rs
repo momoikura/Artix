@@ -184,6 +184,8 @@ pub struct LibraryStats {
 #[serde(rename_all = "camelCase")]
 pub struct ImportOutcome {
     pub imported: Vec<String>,
+    /// Sessions that already existed and were refreshed with newer content.
+    pub updated: Vec<String>,
     pub duplicates: Vec<String>,
     pub failed: Vec<ImportFailure>,
 }

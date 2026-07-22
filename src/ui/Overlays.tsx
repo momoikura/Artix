@@ -219,6 +219,38 @@ export function SettingsOverlay(): JSX.Element {
       <div className="section-heading">Import</div>
 
       <Toggle
+        label="Sync Claude Code automatically"
+        hint="Scans ~/.claude/projects shortly after launch and every few minutes, importing only what changed. Everything stays on this machine."
+        value={draft.import.autoSync}
+        onChange={(autoSync) => apply({ ...draft, import: { ...draft.import, autoSync } })}
+      />
+      <div className="field">
+        <div>
+          <div className="field__label">Sync interval</div>
+          <div className="field__hint">How often to check while Artix is open.</div>
+        </div>
+        <div className="field__control">
+          <select
+            className="input"
+            value={draft.import.autoSyncMinutes}
+            disabled={!draft.import.autoSync}
+            onChange={(event) =>
+              apply({
+                ...draft,
+                import: { ...draft.import, autoSyncMinutes: Number(event.target.value) },
+              })
+            }
+          >
+            <option value={2}>Every 2 minutes</option>
+            <option value={5}>Every 5 minutes</option>
+            <option value={10}>Every 10 minutes</option>
+            <option value={30}>Every 30 minutes</option>
+            <option value={60}>Hourly</option>
+          </select>
+        </div>
+      </div>
+
+      <Toggle
         label="Skip duplicates"
         hint="Sessions whose content hash is already stored are ignored on import."
         value={draft.import.skipDuplicates}

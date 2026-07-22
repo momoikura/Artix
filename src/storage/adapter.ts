@@ -29,6 +29,12 @@ import type { ParsedQuery } from '../search/query-parser.ts';
 /** Outcome of a bulk import. Duplicates are expected, not failures. */
 export interface ImportOutcome {
   imported: SessionId[];
+  /**
+   * Sessions that already existed and were refreshed with newer content.
+   * A transcript grows while you work, so a re-sync updates rather than
+   * duplicating — matched on the source's own session id.
+   */
+  updated: SessionId[];
   duplicates: SessionId[];
   failed: { reference: string; message: string }[];
 }

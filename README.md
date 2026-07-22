@@ -106,10 +106,28 @@ Claude Code stores transcripts as line-delimited JSON:
 ~/.claude/projects/<encoded-project-path>/<session-uuid>.jsonl
 ```
 
-Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd> (or **Import from Claude
-Code** on first run). Artix scans that directory, shows you exactly what it
-found and where, and imports only after you confirm. **It never watches the
-directory in the background.**
+Click **Import sessions** in the toolbar (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd>).
+Artix scans that directory, shows you exactly what it found and where, and
+imports only after you confirm.
+
+### Staying in sync automatically
+
+After the first import, Artix keeps itself current: an incremental scan runs
+shortly after launch and every 10 minutes while the app is open, importing only
+transcripts whose modification time changed. Sessions are identified by Claude
+Code's own session id, so a conversation that grows **refreshes in place rather
+than becoming a second star** — and your notes and pinned state survive the
+refresh.
+
+It is a periodic scan, not a filesystem watcher. Transcripts are written
+continuously during a session; a watcher would fire hundreds of times and keep
+importing half-finished conversations. A scan that compares modification times
+costs nothing and naturally captures a session once it has settled.
+
+> [!NOTE]
+> This reads local files into a local database. Nothing is uploaded, and no
+> network request is made — there is no code path capable of one. Turn it off in
+> **Settings → Import** to make importing entirely manual.
 
 The parser is deliberately tolerant — it looks for the handful of things any
 reasonable transcript format has and ignores the rest, so a future change to

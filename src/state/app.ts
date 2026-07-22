@@ -49,11 +49,13 @@ export async function bootstrapApp(options: { demoSessions?: number } = {}): Pro
   await plugins.sync(settings.plugins);
 
   const disposeCommands = registerCoreCommands(storage);
+  const stopAutoSync = startAutoSync(storage, settings);
 
   instance = {
     storage,
     plugins,
     dispose: () => {
+      stopAutoSync();
       disposeCommands();
       disposeNotifications();
       void plugins.deactivateAll();
@@ -62,6 +64,70 @@ export async function bootstrapApp(options: { demoSessions?: number } = {}): Pro
   };
 
   return instance;
+}
+
+/**
+ * Keep the library current with Claude Code without the user doing anything.
+ *
+ * Runs once shortly after launch, then on an interval while Artix is open.
+ * Deliberately *not* a filesystem watcher: transcripts are written
+ * continuously during a session, so a watcher would fire hundreds of times and
+ * repeatedly import half-finished conversations. A periodic incremental scan
+ * costs almost nothing (it compares modification times and usually reads
+ * nothing) and naturally captures a session once it has settled.
+ *
+ * Nothing leaves the machine — this is a local file read into a local database.
+ */
+function startAutoSync(storage: StorageAdapter, settings: AppSettings): () => void {
+  if (!storage.capabilities.filesystem || !settings.import.autoSync) return () => {};
+
+  let stopped = false;
+  let running = false;
+
+  const runOnce = async (announce: boolean) => {
+    if (stopped || running) return;
+    running = true;
+    try {
+      const { syncClaudeSessions } = await import('../services/claude-code.ts');
+      const result = await syncClaudeSessions(storage, (sources) =>
+        runImport(storage, { sources }),
+      );
+
+      const changed = result.imported + result.updated;
+      if (changed > 0) {
+        notify(
+          'success',
+          `Synced ${changed} Claude Code session${changed === 1 ? '' : 's'}.`,
+          [
+            result.imported > 0 ? `${result.imported} new` : '',
+            result.updated > 0 ? `${result.updated} updated` : '',
+          ]
+            .filter(Boolean)
+            .join(' · '),
+        );
+      } else if (announce) {
+        notify('info', 'Claude Code sessions are up to date.');
+      }
+    } catch (e) {
+      // A background sync must never interrupt the user with a stack trace.
+      console.warn('[artix] auto-sync failed', e);
+    } finally {
+      running = false;
+    }
+  };
+
+  // Let the galaxy render before touching the disk.
+  const initial = setTimeout(() => void runOnce(false), 2500);
+  const interval = setInterval(
+    () => void runOnce(false),
+    Math.max(1, settings.import.autoSyncMinutes) * 60_000,
+  );
+
+  return () => {
+    stopped = true;
+    clearTimeout(initial);
+    clearInterval(interval);
+  };
 }
 
 export function getApp(): ArtixApp | null {

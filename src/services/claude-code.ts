@@ -178,6 +178,72 @@ export async function readClaudeSessions(
   return { sources, failed };
 }
 
+/* ------------------------------------------------------------ auto-sync */
+
+/** kv key holding the epoch-ms watermark of the last successful sync. */
+export const LAST_SYNC_KEY = 'claude-code:lastSyncAt';
+
+export interface SyncResult {
+  scanned: number;
+  imported: number;
+  updated: number;
+  unchanged: number;
+  failed: number;
+}
+
+/**
+ * Import transcripts changed since the last sync.
+ *
+ * Incremental by modification time, so a routine sync of a 65 MB store reads
+ * only what actually changed — usually nothing, occasionally one file.
+ *
+ * A one-minute overlap is subtracted from the watermark because a transcript
+ * being written *as* the scan runs can land a modification a moment before the
+ * timestamp we record; without the overlap that write would be skipped forever.
+ */
+export async function syncClaudeSessions(
+  storage: StorageAdapter,
+  runImport: (sources: ImportSource[]) => Promise<{
+    imported: unknown[];
+    updated: unknown[];
+    duplicates: unknown[];
+    failed: unknown[];
+  }>,
+  options: { force?: boolean } = {},
+): Promise<SyncResult> {
+  const empty: SyncResult = { scanned: 0, imported: 0, updated: 0, unchanged: 0, failed: 0 };
+
+  const all = await discoverClaudeSessions(storage);
+  if (all.length === 0) return empty;
+
+  let since = 0;
+  if (!options.force) {
+    const stored = await storage.kvGet(LAST_SYNC_KEY);
+    if (stored.ok && stored.value) since = Number.parseInt(stored.value, 10) || 0;
+  }
+
+  const OVERLAP_MS = 60_000;
+  const changed = since > 0 ? all.filter((s) => s.modifiedAt >= since - OVERLAP_MS) : all;
+  if (changed.length === 0) {
+    await storage.kvSet(LAST_SYNC_KEY, String(Date.now()));
+    return { ...empty, scanned: all.length };
+  }
+
+  const { sources, failed } = await readClaudeSessions(storage, changed);
+  const report = await runImport(sources);
+
+  // Only advance the watermark on success, so a failed sync retries next time.
+  await storage.kvSet(LAST_SYNC_KEY, String(Date.now()));
+
+  return {
+    scanned: all.length,
+    imported: report.imported.length,
+    updated: report.updated.length,
+    unchanged: report.duplicates.length,
+    failed: report.failed.length + failed.length,
+  };
+}
+
 /** Human summary of a scan, for the confirmation step. */
 export function describeScan(sessions: readonly DiscoveredSession[]): string {
   if (sessions.length === 0) return 'No Claude Code transcripts found.';

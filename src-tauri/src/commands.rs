@@ -72,8 +72,12 @@ pub fn save_sessions(
                 .clone()
                 .unwrap_or_else(|| detail.session.title.clone());
 
-            match repo::insert_session(tx, detail, document) {
-                Ok(id) => outcome.imported.push(id),
+            // Upsert, not insert: a session that has grown since the last sync
+            // must refresh in place rather than become a second star.
+            match repo::upsert_session(tx, detail, document) {
+                Ok((id, repo::UpsertOutcome::Inserted)) => outcome.imported.push(id),
+                Ok((id, repo::UpsertOutcome::Updated)) => outcome.updated.push(id),
+                Ok((id, repo::UpsertOutcome::Unchanged)) => outcome.duplicates.push(id),
                 Err(ArtixError::Duplicate(existing)) => outcome.duplicates.push(existing),
                 Err(e) => outcome.failed.push(ImportFailure {
                     reference,

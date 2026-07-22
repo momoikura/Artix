@@ -170,7 +170,7 @@ export async function runImport(
     if (processed % 25 === 0) await Promise.resolve();
   }
 
-  let outcome: ImportOutcome = { imported: [], duplicates: [], failed: [] };
+  let outcome: ImportOutcome = { imported: [], updated: [], duplicates: [], failed: [] };
   if (details.length > 0) {
     const saved = await storage.saveSessions(details);
     if (saved.ok) {

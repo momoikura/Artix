@@ -129,6 +129,21 @@
   -webkit-app-region: no-drag;
 }
 
+/* The primary action in the whole app — importing is what makes Artix useful,
+   so it stays visible whether the library is empty or not. */
+.hud__import {
+  flex: none;
+  height: 28px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin-right: var(--space-2);
+}
+
+.hud__import svg {
+  flex: none;
+}
+
 .hud__toggle {
   height: 26px;
   padding: 0 var(--space-3);

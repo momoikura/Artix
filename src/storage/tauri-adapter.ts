@@ -244,7 +244,7 @@ export class TauriStorageAdapter implements StorageAdapter {
       // Chunked so a 20k-file import reports progress and never builds one
       // multi-hundred-megabyte IPC payload.
       const CHUNK = 250;
-      const outcome: ImportOutcome = { imported: [], duplicates: [], failed: [] };
+      const outcome: ImportOutcome = { imported: [], updated: [], duplicates: [], failed: [] };
 
       for (let i = 0; i < details.length; i += CHUNK) {
         const slice = details.slice(i, i + CHUNK);
@@ -252,12 +252,19 @@ export class TauriStorageAdapter implements StorageAdapter {
         const partial = await invoke<ImportOutcome>('save_sessions', { items });
 
         outcome.imported.push(...partial.imported);
+        outcome.updated.push(...(partial.updated ?? []));
         outcome.duplicates.push(...partial.duplicates);
         outcome.failed.push(...partial.failed);
 
+        // An updated session keeps its original id, so the cache is refreshed
+        // from storage rather than from the draft we just sent.
         const importedSet = new Set<string>(partial.imported);
         for (const detail of slice) {
           if (importedSet.has(detail.session.id)) this.#cache(detail.session);
+        }
+        for (const id of partial.updated ?? []) {
+          const refreshed = await this.getSession(id);
+          if (refreshed.ok) this.#cache(refreshed.value.session);
         }
       }
 

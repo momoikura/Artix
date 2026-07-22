@@ -175,6 +175,218 @@ fn duplicate_content_hash_is_rejected() {
     );
 }
 
+/* ---------------------------------------------------------------- upsert */
+
+/// Auto-sync re-reads transcripts that grow while you work. Identity must be
+/// the source's own session id, or every sync would add another star.
+mod upsert {
+    use super::*;
+
+    fn claude(
+        id: &str,
+        session_uuid: &str,
+        title: &str,
+        hash: &str,
+        messages: usize,
+    ) -> SessionDetail {
+        let mut d = detail(id, title, hash, 1_700_000_000_000);
+        d.session.source = "core:claude-jsonl".into();
+        d.session.source_ref = Some(session_uuid.into());
+        d.session.message_count = messages as i64;
+        d.messages = (0..messages)
+            .map(|i| Message {
+                id: format!("{id}-m{i}"),
+                session_id: id.into(),
+                seq: i as i64,
+                role: "user".into(),
+                content: format!("message {i}"),
+                created_at: Some(1_700_000_000_000),
+                token_estimate: 5,
+                tool_name: None,
+            })
+            .collect();
+        d
+    }
+
+    #[test]
+    fn refreshes_in_place_rather_than_duplicating() {
+        let db = db();
+        let (_, first) = db
+            .transaction(|tx| {
+                repo::upsert_session(
+                    tx,
+                    &claude("S1", "uuid-1", "Session", "h1", 2),
+                    &doc("S1", "Session", "x"),
+                )
+            })
+            .unwrap();
+        assert_eq!(first, repo::UpsertOutcome::Inserted);
+
+        let (id, second) = db
+            .transaction(|tx| {
+                repo::upsert_session(
+                    tx,
+                    &claude("S2", "uuid-1", "Session", "h2", 7),
+                    &doc("S2", "Session", "y"),
+                )
+            })
+            .unwrap();
+        assert_eq!(second, repo::UpsertOutcome::Updated);
+        // Same record, not a second one.
+        assert_eq!(id, "S1");
+
+        let all = db
+            .with(|c| repo::list_sessions(c, &SessionFilters::default()))
+            .unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].message_count, 7);
+
+        // Children were replaced, not appended.
+        db.with(|c| {
+            let n: i64 = c.query_row("SELECT count(*) FROM messages", [], |r| r.get(0))?;
+            assert_eq!(n, 7);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn identical_content_is_a_no_op() {
+        let db = db();
+        db.transaction(|tx| {
+            repo::upsert_session(
+                tx,
+                &claude("S1", "uuid-1", "S", "h1", 3),
+                &doc("S1", "S", "x"),
+            )
+        })
+        .unwrap();
+        let (_, outcome) = db
+            .transaction(|tx| {
+                repo::upsert_session(
+                    tx,
+                    &claude("S1", "uuid-1", "S", "h1", 3),
+                    &doc("S1", "S", "x"),
+                )
+            })
+            .unwrap();
+        assert_eq!(outcome, repo::UpsertOutcome::Unchanged);
+    }
+
+    /// The one thing a re-sync must never do.
+    #[test]
+    fn preserves_notes_and_pinned_across_a_refresh() {
+        let db = db();
+        db.transaction(|tx| {
+            repo::upsert_session(
+                tx,
+                &claude("S1", "uuid-1", "S", "h1", 1),
+                &doc("S1", "S", "x"),
+            )
+        })
+        .unwrap();
+
+        let patch =
+            serde_json::json!({ "notes": "the retry logic is load-bearing", "pinned": true });
+        db.transaction(|tx| repo::update_session(tx, "S1", &patch, 1_700_000_100_000))
+            .unwrap();
+
+        db.transaction(|tx| {
+            repo::upsert_session(
+                tx,
+                &claude("S2", "uuid-1", "S renamed", "h2", 9),
+                &doc("S2", "S renamed", "y"),
+            )
+        })
+        .unwrap();
+
+        let loaded = db.with(|c| repo::get_session(c, "S1")).unwrap();
+        assert_eq!(loaded.session.notes, "the retry logic is load-bearing");
+        assert!(loaded.session.pinned);
+        // New content still landed.
+        assert_eq!(loaded.session.title, "S renamed");
+        assert_eq!(loaded.messages.len(), 9);
+    }
+
+    #[test]
+    fn refreshed_session_is_searchable_under_its_new_content() {
+        let db = db();
+        db.transaction(|tx| {
+            repo::upsert_session(
+                tx,
+                &claude("S1", "uuid-1", "Before", "h1", 1),
+                &doc("S1", "Before", "stale"),
+            )
+        })
+        .unwrap();
+        db.transaction(|tx| {
+            repo::upsert_session(
+                tx,
+                &claude("S2", "uuid-1", "After", "h2", 2),
+                &doc("S2", "After", "zephyr"),
+            )
+        })
+        .unwrap();
+
+        assert_eq!(
+            db.with(|c| repo::fts_search(c, "\"zephyr\"", 10))
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            db.with(|c| repo::fts_search(c, "\"stale\"", 10))
+                .unwrap()
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn different_session_ids_stay_separate() {
+        let db = db();
+        db.transaction(|tx| {
+            repo::upsert_session(
+                tx,
+                &claude("S1", "uuid-1", "One", "h1", 1),
+                &doc("S1", "One", "x"),
+            )
+        })
+        .unwrap();
+        db.transaction(|tx| {
+            repo::upsert_session(
+                tx,
+                &claude("S2", "uuid-2", "Two", "h2", 1),
+                &doc("S2", "Two", "y"),
+            )
+        })
+        .unwrap();
+
+        let all = db
+            .with(|c| repo::list_sessions(c, &SessionFilters::default()))
+            .unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn falls_back_to_hash_dedupe_without_a_source_ref() {
+        let db = db();
+        let mut anon = detail("S1", "Anon", "h1", 1_700_000_000_000);
+        anon.session.source_ref = None;
+
+        db.transaction(|tx| repo::upsert_session(tx, &anon, &doc("S1", "Anon", "x")))
+            .unwrap();
+
+        let mut same = detail("S2", "Anon", "h1", 1_700_000_000_000);
+        same.session.source_ref = None;
+        let result = db.transaction(|tx| repo::upsert_session(tx, &same, &doc("S2", "Anon", "x")));
+        assert!(
+            matches!(result, Err(ArtixError::Duplicate(_))),
+            "got {result:?}"
+        );
+    }
+}
+
 /* --------------------------------------------------------------- search */
 
 #[test]

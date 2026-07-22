@@ -190,9 +190,22 @@ export class MemoryStorageAdapter implements StorageAdapter {
   }
 
   async saveSessions(details: SessionDetail[]): Promise<Result<ImportOutcome>> {
-    const outcome: ImportOutcome = { imported: [], duplicates: [], failed: [] };
+    const outcome: ImportOutcome = { imported: [], updated: [], duplicates: [], failed: [] };
 
     for (const detail of details) {
+      // Mirror the SQLite adapter: identity is (source, sourceRef) when the
+      // source provides one, so a grown transcript refreshes in place.
+      const existing = this.#findBySourceRef(detail.session);
+      if (existing) {
+        if (existing.session.contentHash === detail.session.contentHash) {
+          outcome.duplicates.push(existing.session.id);
+          continue;
+        }
+        this.#refresh(existing, detail);
+        outcome.updated.push(existing.session.id);
+        continue;
+      }
+
       if (this.#hashes.has(detail.session.contentHash)) {
         outcome.duplicates.push(detail.session.id);
         continue;
@@ -327,6 +340,41 @@ export class MemoryStorageAdapter implements StorageAdapter {
   }
 
   /* --------------------------------------------------------------- internals */
+
+  /** Existing record with the same `(source, sourceRef)` identity, if any. */
+  #findBySourceRef(session: Session): SessionDetail | null {
+    if (!session.sourceRef) return null;
+    for (const detail of this.#details.values()) {
+      if (detail.session.source === session.source && detail.session.sourceRef === session.sourceRef) {
+        return detail;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Replace derived content while keeping identity and anything the user wrote.
+   * Notes and pinned state must survive a re-sync.
+   */
+  #refresh(existing: SessionDetail, incoming: SessionDetail): void {
+    const id = existing.session.id;
+    this.#hashes.delete(existing.session.contentHash);
+
+    const merged: SessionDetail = {
+      session: {
+        ...incoming.session,
+        id,
+        notes: existing.session.notes,
+        pinned: existing.session.pinned,
+      },
+      messages: incoming.messages.map((m) => ({ ...m, sessionId: id })),
+      artifacts: incoming.artifacts.map((a) => ({ ...a, sessionId: id })),
+      files: incoming.files.map((f) => ({ ...f, sessionId: id })),
+      links: existing.links,
+    };
+
+    this.#insert(merged);
+  }
 
   #insert(detail: SessionDetail): void {
     this.#sessions.set(detail.session.id, detail.session);
