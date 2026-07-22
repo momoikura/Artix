@@ -116,23 +116,42 @@ reasonable transcript format has and ignores the rest, so a future change to
 Claude Code's on-disk layout degrades gracefully instead of breaking your
 archive. It understands:
 
-- `aiTitle` — the generated session title
+- `customTitle` / `aiTitle` — your own title wins, then the generated one
 - `thinking` blocks — preserved as quoted reasoning, not discarded
-- `gitBranch` — captured as a `branch:` tag
-- `cwd` — the authoritative project path
-- `isSidechain` — sub-agent transcripts, skipped and reported
+- `cwd` — the authoritative project path (directory names are lossy; both `:`
+  and spaces become `-`, so `Teach me` is unrecoverable from the folder alone)
+- sub-agent transcripts at `<session>/subagents/*.jsonl` — attached to their
+  parent session as searchable notes rather than imported as empty phantoms
+- `gitBranch` — captured as a `branch:` tag, skipping uninformative ones
 - tool calls — rendered as readable, searchable JSON
 
 Also supported: <kbd>Ctrl</kbd>+<kbd>I</kbd> for individual files, folder
 scanning, and drag-and-drop onto the window.
 
+### Giving the context back
+
+Two routes, both budgeted so they stay cheap:
+
+| | |
+| --- | --- |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> | Copy a bundle to the clipboard — paste as the first message of a new session |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> | **Write it into the project's `CLAUDE.md`** — Claude Code loads that automatically, so the next session in that folder *starts* with the context |
+
+The `CLAUDE.md` route is the one that saves the most tokens: you never paste
+anything, and the assistant never re-reads the codebase to rediscover what a
+previous session already established.
+
+Artix owns only the text between `<!-- artix:begin -->` and `<!-- artix:end -->`.
+Anything you wrote yourself is preserved byte-for-byte, and re-running replaces
+that block rather than appending, so the file cannot grow without bound.
+
 ---
 
-## Getting context back out
+## What goes in the bundle
 
-Select a session and press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>. Artix
-builds a briefing in strict priority order and stops when the token budget is
-spent:
+Artix builds the briefing in strict priority order and stops when the token
+budget is spent — so the things you can never recover from the code survive
+even when the transcript does not:
 
 ```
 1. Identity      what, where, when
@@ -164,6 +183,7 @@ than shipping a possibly-stale snapshot.
 | <kbd>Ctrl</kbd>+<kbd>K</kbd> | Command palette and search |
 | <kbd>/</kbd> | Focus inline search |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> | Copy context bundle |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> | Write context into the project's `CLAUDE.md` |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd> | Import from Claude Code |
 | <kbd>Ctrl</kbd>+<kbd>/</kbd> | All shortcuts |
 

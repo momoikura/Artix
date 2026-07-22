@@ -134,6 +134,18 @@ describe('JSONL importer', () => {
     expect(draft.project).toBe('quartz');
     expect(draft.sourceRef).toBe('abc-123');
     expect(draft.tags).toContain('branch:feature/planner');
+    // …but a detached HEAD or the default branch says nothing worth tagging.
+    const onHead = claudeJsonlImporter.parse(
+      source(
+        'h.jsonl',
+        JSON.stringify({
+          type: 'user',
+          gitBranch: 'HEAD',
+          message: { role: 'user', content: 'hello' },
+        }),
+      ),
+    ).drafts[0]!;
+    expect(onHead.tags).toEqual([]);
     expect(draft.notes).toContain('2.0.14');
 
     // Thinking is preserved, quoted rather than dropped.
@@ -141,10 +153,15 @@ describe('JSONL importer', () => {
     expect(assistant.content).toContain('correlated subquery runs per row');
     expect(assistant.content).toContain('It is the correlated subquery.');
 
-    // Sidechains are excluded and reported.
+    // Sidechains stay out of the conversation, but are kept as a searchable
+    // artifact rather than thrown away — sub-agent work is still real work.
     expect(draft.messages).toHaveLength(2);
-    expect(result.warnings.some((w) => w.includes('sidechain'))).toBe(true);
     expect(JSON.stringify(draft.messages)).not.toContain('sub-agent chatter');
+    expect(result.warnings.some((w) => w.includes('sub-agent'))).toBe(true);
+
+    const note = draft.artifacts!.find((a) => a.kind === 'note');
+    expect(note?.title).toContain('Sub-agent transcript');
+    expect(note?.content).toContain('sub-agent chatter');
   });
 
   it('keeps redacted thinking as a marker rather than a ciphertext blob', () => {

@@ -41,6 +41,7 @@ describe('scan description', () => {
     projectHint: project,
     bytes,
     modifiedAt: 0,
+    subagentPaths: [],
   });
 
   it('summarises count, projects and size', () => {

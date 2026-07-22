@@ -34,6 +34,13 @@ export interface DiscoveredSession {
   projectHint: string;
   bytes: number;
   modifiedAt: number;
+  /**
+   * Sub-agent transcripts belonging to this session, found at
+   * `<session-id>/subagents/agent-*.jsonl`. They are read together with the
+   * parent — on their own they contain only sidechain turns and would import
+   * as empty phantom sessions.
+   */
+  subagentPaths: string[];
 }
 
 /**
@@ -88,23 +95,46 @@ export async function discoverClaudeSessions(
   const dir = root ?? (await claudeProjectsDir(storage));
   if (!dir) return [];
 
-  const found = await storage.discoverFiles(dir, ['jsonl'], { maxDepth: 3, maxFiles: 20_000 });
+  const found = await storage.discoverFiles(dir, ['jsonl'], { maxDepth: 4, maxFiles: 20_000 });
   if (!found.ok) return [];
 
-  return found.value
-    .map((file: DiscoveredFile) => {
-      const normalised = file.path.replace(/\\/g, '/');
-      const segments = normalised.split('/');
-      const parentDir = segments[segments.length - 2] ?? '';
-      return {
-        path: file.path,
-        id: file.name.replace(/\.jsonl$/i, ''),
-        projectHint: projectHintFromDir(parentDir),
-        bytes: file.bytes,
-        modifiedAt: file.modifiedAt,
-      };
-    })
-    .sort((a, b) => b.modifiedAt - a.modifiedAt);
+  const sessions: DiscoveredSession[] = [];
+  // Parent session id -> its sub-agent transcripts.
+  const subagents = new Map<string, { paths: string[]; bytes: number }>();
+
+  for (const file of found.value as DiscoveredFile[]) {
+    const segments = file.path.replace(/\\/g, '/').split('/');
+    const parentDir = segments[segments.length - 2] ?? '';
+
+    // `<project>/<session-id>/subagents/agent-x.jsonl`
+    if (parentDir === 'subagents') {
+      const owner = segments[segments.length - 3] ?? '';
+      const entry = subagents.get(owner) ?? { paths: [], bytes: 0 };
+      entry.paths.push(file.path);
+      entry.bytes += file.bytes;
+      subagents.set(owner, entry);
+      continue;
+    }
+
+    sessions.push({
+      path: file.path,
+      id: file.name.replace(/\.jsonl$/i, ''),
+      projectHint: projectHintFromDir(parentDir),
+      bytes: file.bytes,
+      modifiedAt: file.modifiedAt,
+      subagentPaths: [],
+    });
+  }
+
+  for (const session of sessions) {
+    const owned = subagents.get(session.id);
+    if (!owned) continue;
+    session.subagentPaths = owned.paths;
+    session.bytes += owned.bytes;
+    subagents.delete(session.id);
+  }
+
+  return sessions.sort((a, b) => b.modifiedAt - a.modifiedAt);
 }
 
 /**
@@ -124,10 +154,19 @@ export async function readClaudeSessions(
   for (const [index, session] of sessions.entries()) {
     const contents = await storage.readTextFile(session.path);
     if (contents.ok) {
+      // Append sub-agent transcripts so they import as part of this session.
+      // Line-delimited JSON concatenates cleanly, and the parser routes
+      // sidechain turns into artifacts rather than the main thread.
+      const parts = [contents.value];
+      for (const path of session.subagentPaths) {
+        const sub = await storage.readTextFile(path);
+        if (sub.ok) parts.push(sub.value);
+      }
+
       sources.push({
         reference: session.path,
         name: `${session.projectHint}-${session.id.slice(0, 8)}.jsonl`,
-        content: contents.value,
+        content: parts.join('\n'),
         modifiedAt: session.modifiedAt,
       });
     } else {

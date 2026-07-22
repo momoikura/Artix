@@ -66,6 +66,9 @@ export const claudeJsonlImporter: Importer = {
 export function parseJsonlTranscript(source: ImportSource): ImportResult {
   const warnings: string[] = [];
   const messages: Omit<Message, 'id' | 'sessionId'>[] = [];
+  // Sub-agent turns, kept aside so they stay searchable without scrambling the
+  // order of the main conversation.
+  const sidechain: { role: MessageRole; content: string }[] = [];
 
   let folder: string | null = null;
   let explicitSummary: string | null = null;
@@ -94,17 +97,24 @@ export function parseJsonlTranscript(source: ImportSource): ImportResult {
     // Metadata can appear on any line; take the first non-empty value we see.
     folder ??= readString(record, 'cwd', 'workingDirectory', 'folder', 'projectPath');
     explicitSummary ??= readString(record, 'summary', 'description');
-    // `aiTitle` arrives on its own line carrying no role — a generated title,
-    // which beats anything we could infer from the first message.
+    // Titles arrive on their own lines carrying no role. A title the user set
+    // themselves outranks a generated one, and both beat anything we could
+    // infer from the first message.
+    explicitTitle = readString(record, 'customTitle') ?? explicitTitle;
     explicitTitle ??= readString(record, 'aiTitle', 'title', 'name');
     gitBranch ??= readString(record, 'gitBranch', 'branch');
     sessionId ??= readString(record, 'sessionId', 'session_id', 'id');
     toolVersion ??= readString(record, 'version');
 
-    // Sidechains are sub-agent transcripts. They belong to the parent session
-    // rather than standing alone, and folding them into the main thread would
-    // scramble the conversation order.
+    // Sidechains are sub-agent transcripts. Interleaving them would scramble
+    // the main thread's order, but discarding them loses real work — so they
+    // are set aside and attached as artifacts, which keeps them searchable.
     if (record.isSidechain === true) {
+      const role = extractRole(record);
+      const content = extractContent(record);
+      if (role !== null && content.text.trim().length > 0) {
+        sidechain.push({ role, content: content.text });
+      }
       sidechainSkipped++;
       continue;
     }
@@ -137,7 +147,9 @@ export function parseJsonlTranscript(source: ImportSource): ImportResult {
     warnings.push(`${unparseable} of ${lines.length} lines could not be parsed and were skipped.`);
   }
   if (sidechainSkipped > 0) {
-    warnings.push(`${sidechainSkipped} sub-agent (sidechain) entries were skipped.`);
+    warnings.push(
+      `${sidechainSkipped} sub-agent entries kept as artifacts rather than inline messages.`,
+    );
   }
 
   if (messages.length === 0) {
@@ -149,6 +161,19 @@ export function parseJsonlTranscript(source: ImportSource): ImportResult {
 
   const startedAt = earliest ?? source.modifiedAt ?? Date.now();
   const extraction = extractFromMessages(messages);
+
+  // Sub-agent work becomes searchable notes attached to the parent session.
+  if (sidechain.length > 0) {
+    extraction.artifacts.push({
+      kind: 'note',
+      title: `Sub-agent transcript (${sidechain.length} turns)`,
+      language: null,
+      content: sidechain.map((s) => `**${s.role}:** ${s.content}`).join('\n\n'),
+      path: null,
+      messageSeq: null,
+      done: false,
+    });
+  }
 
   const draft: SessionDraft = {
     title: explicitTitle ?? deriveTitle(messages) ?? titleFromFilename(source.name),
@@ -164,9 +189,11 @@ export function parseJsonlTranscript(source: ImportSource): ImportResult {
     startedAt,
     endedAt: latest ?? null,
     technologies: extraction.technologies,
-    // The git branch is the single most useful thing for locating past work
-    // ("what was I doing on that feature branch?"), so it becomes a real tag.
-    tags: gitBranch ? [`branch:${gitBranch}`] : [],
+    // The git branch is excellent for locating past work ("what was I doing on
+    // that feature branch?") — but only when it names something. A detached
+    // HEAD, or the default branch, says nothing and would just clutter the tag
+    // facet on every session.
+    tags: isMeaningfulBranch(gitBranch) ? [`branch:${gitBranch}`] : [],
     notes: toolVersion ? `Imported from Claude Code ${toolVersion}.` : '',
     messages,
     artifacts: extraction.artifacts,
@@ -198,6 +225,17 @@ function firstNonEmptyLines(content: string, count: number): string[] {
     if (out.length >= count) break;
   }
   return out;
+}
+
+/**
+ * Branch names that carry no information. `HEAD` means a detached checkout,
+ * and the default branch is where most work happens anyway — tagging every
+ * session `branch:main` would make the tag useless as a filter.
+ */
+const UNINFORMATIVE_BRANCHES = new Set(['head', 'main', 'master', 'trunk', 'default']);
+
+function isMeaningfulBranch(branch: string | null): branch is string {
+  return branch !== null && !UNINFORMATIVE_BRANCHES.has(branch.trim().toLowerCase());
 }
 
 function readString(record: Json, ...keys: string[]): string | null {

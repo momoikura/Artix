@@ -145,6 +145,51 @@ function registerCoreCommands(storage: StorageAdapter): () => void {
       },
     },
     {
+      id: 'artix.resumeInClaude',
+      title: 'Resume in Claude Code (write CLAUDE.md)',
+      category: 'Session',
+      shortcut: 'Mod+Shift+R',
+      keywords: ['resume', 'claude', 'memory', 'context', 'continue', 'handoff'],
+      order: 2,
+      when: (context) => context.selectedIds.length > 0 && storage.capabilities.filesystem,
+      run: async (context) => {
+        const { writeResumeContext } = await import('../services/resume.ts');
+
+        const details = [];
+        for (const id of context.selectedIds) {
+          const detail = await storage.getSession(id as SessionId);
+          if (detail.ok) details.push(detail.value);
+        }
+
+        const folder = details[0]?.session.folder;
+        if (!folder) {
+          notify('warn', 'That session has no recorded project folder.', 'Use Copy context bundle instead.');
+          return;
+        }
+
+        // Writing into someone's repo is not something to do silently.
+        const proceed = window.confirm(
+          `Write prior-session context into:\n\n${folder}\\CLAUDE.md\n\n` +
+            'Claude Code loads this automatically, so your next session there starts ' +
+            'with the context already in place.\n\n' +
+            'Only the Artix-managed block is touched — the rest of the file is preserved.',
+        );
+        if (!proceed) return;
+
+        const result = await writeResumeContext(storage, details);
+        if (!result.ok) {
+          notify('error', result.error.message, result.error.hint);
+          return;
+        }
+
+        notify(
+          'success',
+          result.value.replaced ? 'Updated CLAUDE.md.' : 'Wrote CLAUDE.md.',
+          `${result.value.path}\nYour next Claude Code session here starts with this context.`,
+        );
+      },
+    },
+    {
       id: 'artix.pin',
       title: 'Pin / unpin session',
       category: 'Session',
