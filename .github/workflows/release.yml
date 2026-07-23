@@ -1,0 +1,95 @@
+name: Release
+
+# Builds installers for every desktop platform and attaches them to a GitHub
+# Release, so people can install Artix without a Rust toolchain.
+#
+# Triggered by pushing a version tag:  git tag v0.1.0 && git push origin v0.1.0
+# Or run manually from the Actions tab for a dry run (no Release is published).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # required to create the Release and upload assets
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple silicon and Intel are separate targets, not a universal binary,
+          # so each Mac gets a native build.
+          - name: macOS (Apple silicon)
+            os: macos-latest
+            rustTarget: aarch64-apple-darwin
+          - name: macOS (Intel)
+            os: macos-latest
+            rustTarget: x86_64-apple-darwin
+          - name: Linux
+            os: ubuntu-22.04
+            rustTarget: x86_64-unknown-linux-gnu
+          - name: Windows
+            os: windows-latest
+            rustTarget: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev \
+            libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rustTarget }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.rustTarget }}
+
+      - run: npm ci
+
+      # tauri-action runs `tauri build` (which runs `npm run build` via
+      # beforeBuildCommand), collects the installers, creates (or reuses) the
+      # reuses) the Release for this tag, and uploads them. On workflow_dispatch
+      # there is no tag, so it builds without publishing.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target ${{ matrix.rustTarget }}
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: 'Artix ${{ github.ref_name }}'
+          releaseBody: |
+            Local-first long-term memory for Claude Code.
+
+            Download the installer for your platform below. Everything runs
+            offline — no account, no cloud, no telemetry.
+
+            | Platform | File |
+            | --- | --- |
+            | Windows | `.msi` or `-setup.exe` |
+            | macOS (Apple silicon / Intel) | `.dmg` |
+            | Linux | `.AppImage` or `.deb` |
+
+            See the [README](https://github.com/momoikura/Artix#readme) to get started.
+          releaseDraft: true
+          prerelease: false

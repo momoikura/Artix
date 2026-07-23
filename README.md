@@ -74,6 +74,12 @@ reorganises chronologically — computed in the vertex shader, so it costs nothi
 
 ## Install
 
+**Prebuilt installers** for Windows, macOS and Linux are on the
+[releases page](https://github.com/momoikura/Artix/releases/latest) — no
+toolchain required. Unsigned for now, so the OS will warn on first launch.
+
+**From source:**
+
 ```bash
 git clone https://github.com/momoikura/Artix.git
 cd Artix

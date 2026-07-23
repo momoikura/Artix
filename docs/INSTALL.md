@@ -1,5 +1,25 @@
 # Installation
 
+## Download a prebuilt installer
+
+The easiest path — no toolchain required.
+
+Grab the installer for your platform from the
+[latest release](https://github.com/momoikura/Artix/releases/latest):
+
+| Platform | File |
+| --- | --- |
+| Windows | `Artix_x.y.z_x64-setup.exe` (or the `.msi`) |
+| macOS (Apple silicon) | `Artix_x.y.z_aarch64.dmg` |
+| macOS (Intel) | `Artix_x.y.z_x64.dmg` |
+| Linux | `Artix_x.y.z_amd64.AppImage` (or the `.deb`) |
+
+Windows and macOS builds are currently unsigned, so the OS will warn on first
+launch — on Windows choose *More info → Run anyway*; on macOS right-click the app
+and choose *Open*. Building from source (below) avoids the warning.
+
+If you would rather build it yourself, or want to hack on it, read on.
+
 ## Quick start
 
 ```bash

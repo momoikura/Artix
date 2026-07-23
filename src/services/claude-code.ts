@@ -137,11 +137,38 @@ export async function discoverClaudeSessions(
   return sessions.sort((a, b) => b.modifiedAt - a.modifiedAt);
 }
 
+/** Read one session's transcript, with its sub-agent files appended. */
+async function readOneSource(
+  storage: StorageAdapter,
+  session: DiscoveredSession,
+): Promise<ImportSource | null> {
+  const contents = await storage.readTextFile(session.path);
+  if (!contents.ok) return null;
+
+  // Append sub-agent transcripts so they import as part of this session.
+  // Line-delimited JSON concatenates cleanly, and the parser routes sidechain
+  // turns into artifacts rather than the main thread.
+  const parts = [contents.value];
+  for (const path of session.subagentPaths) {
+    const sub = await storage.readTextFile(path);
+    if (sub.ok) parts.push(sub.value);
+  }
+
+  return {
+    reference: session.path,
+    name: `${session.projectHint}-${session.id.slice(0, 8)}.jsonl`,
+    content: parts.join('\n'),
+    modifiedAt: session.modifiedAt,
+  };
+}
+
 /**
- * Read discovered transcripts into import sources.
+ * Read discovered transcripts into import sources, all at once.
  *
- * `onProgress` fires per file because a 65 MB store takes a noticeable moment
- * and silent work looks like a hang.
+ * Kept for callers that genuinely want every source in hand (tests, the small
+ * manual-file path). For syncing a whole store use `importClaudeSessions`,
+ * which streams in batches — holding a year of transcripts in memory at once is
+ * how a heavy user's first sync would OOM.
  */
 export async function readClaudeSessions(
   storage: StorageAdapter,
@@ -152,30 +179,77 @@ export async function readClaudeSessions(
   const failed: string[] = [];
 
   for (const [index, session] of sessions.entries()) {
-    const contents = await storage.readTextFile(session.path);
-    if (contents.ok) {
-      // Append sub-agent transcripts so they import as part of this session.
-      // Line-delimited JSON concatenates cleanly, and the parser routes
-      // sidechain turns into artifacts rather than the main thread.
-      const parts = [contents.value];
-      for (const path of session.subagentPaths) {
-        const sub = await storage.readTextFile(path);
-        if (sub.ok) parts.push(sub.value);
-      }
-
-      sources.push({
-        reference: session.path,
-        name: `${session.projectHint}-${session.id.slice(0, 8)}.jsonl`,
-        content: parts.join('\n'),
-        modifiedAt: session.modifiedAt,
-      });
-    } else {
-      failed.push(session.path);
-    }
+    const source = await readOneSource(storage, session);
+    if (source) sources.push(source);
+    else failed.push(session.path);
     onProgress?.(index + 1, sessions.length);
   }
 
   return { sources, failed };
+}
+
+/** Aggregate outcome of a batched import. */
+export interface ClaudeImportResult {
+  imported: number;
+  updated: number;
+  unchanged: number;
+  failed: number;
+}
+
+/**
+ * Read and import transcripts in bounded batches.
+ *
+ * Peak memory is one batch, not the whole store. A user with a year of heavy
+ * daily use can have gigabytes of transcripts; reading them all before writing
+ * anything — as the naive version did — would exhaust memory on the very first
+ * sync. Each batch is read, imported, and released before the next is touched.
+ *
+ * `onProgress` reports files *processed*, so a large first sync shows real
+ * movement instead of a frozen dialog.
+ */
+export async function importClaudeSessions(
+  storage: StorageAdapter,
+  sessions: readonly DiscoveredSession[],
+  runImport: (sources: ImportSource[]) => Promise<ImportReportCounts>,
+  options: { batchSize?: number; onProgress?: (done: number, total: number) => void } = {},
+): Promise<ClaudeImportResult> {
+  const batchSize = Math.max(1, options.batchSize ?? 20);
+  const total = sessions.length;
+  const result: ClaudeImportResult = { imported: 0, updated: 0, unchanged: 0, failed: 0 };
+
+  let done = 0;
+  for (let start = 0; start < total; start += batchSize) {
+    const batch = sessions.slice(start, start + batchSize);
+
+    const sources: ImportSource[] = [];
+    for (const session of batch) {
+      const source = await readOneSource(storage, session);
+      if (source) sources.push(source);
+      else result.failed++;
+      done++;
+      options.onProgress?.(done, total);
+    }
+
+    if (sources.length > 0) {
+      const report = await runImport(sources);
+      result.imported += report.imported.length;
+      result.updated += report.updated.length;
+      result.unchanged += report.duplicates.length;
+      result.failed += report.failed.length;
+    }
+    // `sources` goes out of scope here; the batch's text is freed before the
+    // next batch is read.
+  }
+
+  return result;
+}
+
+/** The subset of ImportOutcome the batched importer needs. */
+interface ImportReportCounts {
+  imported: unknown[];
+  updated: unknown[];
+  duplicates: unknown[];
+  failed: unknown[];
 }
 
 /* ------------------------------------------------------------ auto-sync */
@@ -203,13 +277,8 @@ export interface SyncResult {
  */
 export async function syncClaudeSessions(
   storage: StorageAdapter,
-  runImport: (sources: ImportSource[]) => Promise<{
-    imported: unknown[];
-    updated: unknown[];
-    duplicates: unknown[];
-    failed: unknown[];
-  }>,
-  options: { force?: boolean } = {},
+  runImport: (sources: ImportSource[]) => Promise<ImportReportCounts>,
+  options: { force?: boolean; onProgress?: (done: number, total: number) => void } = {},
 ): Promise<SyncResult> {
   const empty: SyncResult = { scanned: 0, imported: 0, updated: 0, unchanged: 0, failed: 0 };
 
@@ -229,18 +298,19 @@ export async function syncClaudeSessions(
     return { ...empty, scanned: all.length };
   }
 
-  const { sources, failed } = await readClaudeSessions(storage, changed);
-  const report = await runImport(sources);
+  const result = await importClaudeSessions(storage, changed, runImport, {
+    onProgress: options.onProgress,
+  });
 
   // Only advance the watermark on success, so a failed sync retries next time.
   await storage.kvSet(LAST_SYNC_KEY, String(Date.now()));
 
   return {
     scanned: all.length,
-    imported: report.imported.length,
-    updated: report.updated.length,
-    unchanged: report.duplicates.length,
-    failed: report.failed.length + failed.length,
+    imported: result.imported,
+    updated: result.updated,
+    unchanged: result.unchanged,
+    failed: result.failed,
   };
 }
 

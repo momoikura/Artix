@@ -342,7 +342,7 @@ function registerCoreCommands(storage: StorageAdapter): () => void {
       order: 0,
       when: () => storage.capabilities.filesystem,
       run: async () => {
-        const { discoverClaudeSessions, describeScan, readClaudeSessions, claudeProjectsDir } =
+        const { discoverClaudeSessions, describeScan, importClaudeSessions, claudeProjectsDir } =
           await import('../services/claude-code.ts');
 
         const dir = await claudeProjectsDir(storage);
@@ -369,28 +369,35 @@ function registerCoreCommands(storage: StorageAdapter): () => void {
         );
         if (!proceed) return;
 
-        const { sources, failed } = await readClaudeSessions(storage, sessions, (done, total) => {
-          bus.emit('job:progress', {
-            jobId: 'claude-scan',
-            label: `Reading transcripts (${done}/${total})`,
-            done,
-            total,
-          });
-        });
+        // Batched read+import so a very large store never loads whole into RAM.
+        const jobId = 'claude-scan';
+        const result = await importClaudeSessions(
+          storage,
+          sessions,
+          (sources) => runImport(storage, { sources }),
+          {
+            onProgress: (done, total) =>
+              bus.emit('job:progress', {
+                jobId,
+                label: `Importing sessions (${done}/${total})`,
+                done,
+                total,
+              }),
+          },
+        );
+        bus.emit('job:finished', { jobId, ok: result.failed === 0, message: 'Import complete' });
 
-        const report = await runImport(storage, { sources });
-
-        const skipped = report.skipped.length + report.duplicates.length;
+        const changed = result.imported + result.updated;
         notify(
-          report.failed.length > 0 || failed.length > 0 ? 'warn' : 'success',
-          `Imported ${report.imported.length} Claude Code session${report.imported.length === 1 ? '' : 's'}.`,
+          result.failed > 0 ? 'warn' : 'success',
+          `Imported ${changed} Claude Code session${changed === 1 ? '' : 's'}.`,
           [
-            skipped > 0 ? `${skipped} already in library` : '',
-            failed.length > 0 ? `${failed.length} unreadable` : '',
-            ...report.warnings.slice(0, 2),
+            result.updated > 0 ? `${result.updated} updated` : '',
+            result.unchanged > 0 ? `${result.unchanged} already current` : '',
+            result.failed > 0 ? `${result.failed} unreadable` : '',
           ]
             .filter(Boolean)
-            .join('\n'),
+            .join(' · '),
         );
       },
     },
