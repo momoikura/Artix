@@ -116,6 +116,32 @@ Click **Import sessions** in the toolbar (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<k
 Artix scans that directory, shows you exactly what it found and where, and
 imports only after you confirm.
 
+## Importing from other AI tools
+
+Artix is not Claude-Code-only. How a tool's history reaches Artix depends on
+where that history lives:
+
+| Tool | How |
+| --- | --- |
+| **Claude Code** | Read directly from `~/.claude/projects` — nothing to export. |
+| **ChatGPT** | *Settings → Data controls → Export.* Artix reads the `conversations.json` it emails you. |
+| **Claude.ai / Gemini / others** | Use the tool's data export; Artix imports the resulting JSON, Markdown or text. |
+
+> [!IMPORTANT]
+> **Websites are imported from their exports, never scraped.** Artix has no
+> network stack — it cannot and will not read a logged-in website. Cloud tools
+> all provide an official data export; that file is what Artix reads, and it
+> reads it locally.
+
+**Automatically**, via **watched folders** (Settings → Import → *Watch
+Downloads*): when an export file lands in a folder you watch, Artix detects its
+format and imports it on the next sync. Drop a ChatGPT export in Downloads and
+it becomes stars in your galaxy — no manual step.
+
+The format is auto-detected, so a single watched folder can mix a ChatGPT
+export, a Claude.ai export and a Markdown transcript, and each is handled
+correctly. New formats are one importer away — see [docs/PLUGINS.md](docs/PLUGINS.md).
+
 ### Staying in sync automatically
 
 After the first import, Artix keeps itself current: an incremental scan runs

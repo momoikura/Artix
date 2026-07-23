@@ -10,6 +10,7 @@ import { bus } from '../core/events.ts';
 import { buildSession, computeSessionHash } from '../core/session.ts';
 import { newId } from '../core/id.ts';
 import { claudeJsonlImporter } from './claude-jsonl.ts';
+import { chatgptImporter } from './chatgpt.ts';
 import { jsonImporter } from './json.ts';
 import { markdownImporter } from './markdown.ts';
 import { textImporter } from './text.ts';
@@ -95,6 +96,7 @@ export class ImporterRegistry {
 /** The default registry, pre-loaded with the built-in importers. */
 export const importers = new ImporterRegistry();
 importers.register(claudeJsonlImporter);
+importers.register(chatgptImporter);
 importers.register(jsonImporter);
 importers.register(markdownImporter);
 importers.register(textImporter);

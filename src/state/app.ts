@@ -142,25 +142,32 @@ function startAutoSync(storage: StorageAdapter, settings: AppSettings): () => vo
     if (stopped || running) return;
     running = true;
     try {
-      const { syncClaudeSessions } = await import('../services/claude-code.ts');
-      const result = await syncClaudeSessions(storage, (sources) =>
-        runImport(storage, { sources }),
-      );
+      const importSources = (sources: Parameters<typeof runImport>[1]['sources']) =>
+        runImport(storage, { sources });
 
-      const changed = result.imported + result.updated;
+      // 1. Claude Code's own local transcript store.
+      const { syncClaudeSessions } = await import('../services/claude-code.ts');
+      const cc = await syncClaudeSessions(storage, importSources);
+
+      // 2. Watched folders — where exports from ChatGPT, Claude.ai, Gemini and
+      //    anything else land. The importer registry auto-detects each format.
+      const { syncWatchedFolders } = await import('../services/folder-sync.ts');
+      const folders = settings.import.watchedFolders;
+      const wf = folders.length > 0 ? await syncWatchedFolders(storage, folders, importSources) : null;
+
+      const imported = cc.imported + (wf?.imported ?? 0);
+      const updated = cc.updated + (wf?.updated ?? 0);
+      const changed = imported + updated;
+
       if (changed > 0) {
-        notify(
-          'success',
-          `Synced ${changed} Claude Code session${changed === 1 ? '' : 's'}.`,
-          [
-            result.imported > 0 ? `${result.imported} new` : '',
-            result.updated > 0 ? `${result.updated} updated` : '',
-          ]
-            .filter(Boolean)
-            .join(' · '),
-        );
+        notify('success', `Synced ${changed} session${changed === 1 ? '' : 's'}.`, [
+          imported > 0 ? `${imported} new` : '',
+          updated > 0 ? `${updated} updated` : '',
+        ]
+          .filter(Boolean)
+          .join(' · '));
       } else if (announce) {
-        notify('info', 'Claude Code sessions are up to date.');
+        notify('info', 'Sessions are up to date.');
       }
     } catch (e) {
       // A background sync must never interrupt the user with a stack trace.

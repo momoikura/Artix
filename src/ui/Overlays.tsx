@@ -180,6 +180,27 @@ export function SettingsOverlay(): JSX.Element {
   const setGalaxy = (patch: Partial<AppSettings['galaxy']>) =>
     apply({ ...draft, galaxy: { ...galaxy, ...patch } });
 
+  const addFolder = (folder: string | null) => {
+    if (!folder) return;
+    if (draft.import.watchedFolders.includes(folder)) return;
+    apply({
+      ...draft,
+      import: { ...draft.import, watchedFolders: [...draft.import.watchedFolders, folder] },
+    });
+  };
+
+  const addWatchFolder = async () => {
+    const { pickFolder } = await import('../services/dialogs.ts');
+    addFolder(await pickFolder('Choose a folder to watch for exports'));
+  };
+
+  const addWatchDefault = async () => {
+    const { defaultWatchFolder } = await import('../services/folder-sync.ts');
+    const downloads = await defaultWatchFolder();
+    if (downloads) addFolder(downloads);
+    else notify('warn', 'Could not locate your Downloads folder.', 'Use Choose… to pick one.');
+  };
+
   return (
     <Overlay title="Settings" subtitle="Everything is stored locally.">
       <div className="section-heading">Appearance</div>
@@ -333,12 +354,48 @@ export function SettingsOverlay(): JSX.Element {
           apply({ ...draft, import: { ...draft.import, skipDuplicates } })
         }
       />
-      <Toggle
-        label="Scan watched folders on launch"
-        hint="Artix never reads files in the background unless this is on."
-        value={draft.import.scanOnLaunch}
-        onChange={(scanOnLaunch) => apply({ ...draft, import: { ...draft.import, scanOnLaunch } })}
-      />
+      <div className="section-heading">Watched folders</div>
+      <p className="field__hint" style={{ maxWidth: 'none', marginBottom: 'var(--space-3)' }}>
+        Export files that land in these folders are imported automatically —
+        ChatGPT, Claude.ai, Gemini and anything else that exports to a file. The
+        format is detected for you. Nothing is uploaded; only these folders are
+        read, and only files that changed.
+      </p>
+
+      {draft.import.watchedFolders.length === 0 && (
+        <p className="field__hint">No folders watched yet.</p>
+      )}
+      {draft.import.watchedFolders.map((folder) => (
+        <div className="field" key={folder}>
+          <div className="field__label mono" style={{ overflowWrap: 'anywhere' }}>{folder}</div>
+          <button
+            className="btn btn--ghost btn--danger"
+            onClick={() =>
+              apply({
+                ...draft,
+                import: {
+                  ...draft.import,
+                  watchedFolders: draft.import.watchedFolders.filter((f) => f !== folder),
+                },
+              })
+            }
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+
+      <div className="field">
+        <div className="field__label">Add a folder to watch</div>
+        <div className="field__control">
+          <button className="btn" onClick={() => void addWatchDefault()}>
+            Watch Downloads
+          </button>
+          <button className="btn" onClick={() => void addWatchFolder()}>
+            Choose…
+          </button>
+        </div>
+      </div>
 
       <div className="section-heading">Plugins</div>
 

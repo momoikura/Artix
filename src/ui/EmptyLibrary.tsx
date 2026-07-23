@@ -48,8 +48,13 @@ export function EmptyLibrary(): JSX.Element {
 
         <dl className="empty__formats">
           <div>
-            <dt>Supported</dt>
-            <dd>JSONL transcripts · JSON exports · Markdown · plain text · ZIP archives</dd>
+            <dt>Sources</dt>
+            <dd>
+              Claude Code directly · ChatGPT, Claude.ai and Gemini via their data
+              exports · any JSONL, JSON, Markdown or text transcript · ZIP archives.
+              Point Artix at a folder (Settings → Import) and new exports import
+              themselves.
+            </dd>
           </div>
           <div>
             <dt>Storage</dt>
