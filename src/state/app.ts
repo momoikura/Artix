@@ -20,7 +20,7 @@ import type { AppSettings } from '../storage/settings.ts';
 import type { StorageAdapter } from '../storage/adapter.ts';
 import type { SessionId } from '../core/types.ts';
 
-export const APP_VERSION = '0.1.0';
+export const APP_VERSION = '0.1.1';
 
 export interface ArtixApp {
   storage: StorageAdapter;

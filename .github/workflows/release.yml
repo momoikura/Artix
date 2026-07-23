@@ -79,17 +79,22 @@ jobs:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: 'Artix ${{ github.ref_name }}'
           releaseBody: |
-            Local-first long-term memory for Claude Code.
-
-            Download the installer for your platform below. Everything runs
+            Local-first long-term memory for Claude Code. Everything runs
             offline — no account, no cloud, no telemetry.
 
             | Platform | File |
             | --- | --- |
             | Windows | `.msi` or `-setup.exe` |
-            | macOS (Apple silicon / Intel) | `.dmg` |
-            | Linux | `.AppImage` or `.deb` |
+            | macOS — Apple silicon | `_aarch64.dmg` |
+            | macOS — Intel | `_x64.dmg` |
+            | Linux | `.AppImage`, `.deb`, or `.rpm` |
 
-            See the [README](https://github.com/momoikura/Artix#readme) to get started.
+            **First launch:** these builds are unsigned, so the OS will warn you.
+            On Windows choose *More info → Run anyway*; on macOS right-click the
+            app and choose *Open*. See
+            [docs/INSTALL.md](https://github.com/momoikura/Artix/blob/main/docs/INSTALL.md).
+
+            Full changelog:
+            [CHANGELOG.md](https://github.com/momoikura/Artix/blob/main/CHANGELOG.md).
           releaseDraft: true
           prerelease: false
