@@ -130,6 +130,13 @@ continuously during a session; a watcher would fire hundreds of times and keep
 importing half-finished conversations. A scan that compares modification times
 costs nothing and naturally captures a session once it has settled.
 
+**Want it instant?** Turn on **Instant sync** in Settings → Import. Artix adds a
+`SessionEnd` hook to `~/.claude/settings.json` that pings the running app the
+moment a session ends, so it lands in the galaxy within a second or two rather
+than at the next timer tick. It edits only Artix's own hook entry — everything
+else in the file is preserved — and it triggers a local sync, so nothing leaves
+your machine. Toggle it back off to remove the hook cleanly.
+
 > [!NOTE]
 > This reads local files into a local database. Nothing is uploaded, and no
 > network request is made — there is no code path capable of one. Turn it off in

@@ -18,6 +18,12 @@ customer names. Artix treats the library as sensitive by default:
   (Settings → Import, on by default). That is a **local file read into a local
   database** — it is the only directory scanned, only changed files are read,
   and nothing is transmitted. Disable it for fully manual importing.
+- The optional **Instant sync** setting writes a `SessionEnd` hook into
+  `~/.claude/settings.json`. It is off until you enable it, requires an explicit
+  confirmation, and edits only Artix's own hook entry (every other key is
+  preserved through parse/serialise). The hook runs `artix --sync`, a local
+  command that reads local files — no network path. Toggling it off removes the
+  entry and cleans up any container it emptied.
 - The desktop backend links **no HTTP client**. There is no code path capable of
   making a network request.
 - `.gitignore` excludes `*.db` and `.artix-data/` so a library cannot be

@@ -268,6 +268,29 @@ pub fn backup_database(state: State<'_, AppState>, path: String) -> Result<u64> 
     })
 }
 
+/// Absolute path to the running Artix executable.
+///
+/// The frontend needs this to write the Claude Code SessionEnd hook, which must
+/// invoke *this* binary rather than assume an install location.
+#[tauri::command]
+pub fn current_exe_path() -> Result<String> {
+    std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .map_err(|e| ArtixError::Io(e.to_string()))
+}
+
+/// Reveal the main window once the frontend has painted.
+///
+/// The window starts hidden (see `tauri.conf.json`) so the cold `--sync` path
+/// can exit without a flash, and so a normal launch never shows an unpainted
+/// white frame. The UI calls this after its first render.
+#[tauri::command]
+pub fn show_main_window(window: tauri::Window) -> Result<()> {
+    let _ = window.show();
+    let _ = window.set_focus();
+    Ok(())
+}
+
 /// Reveal a path in the OS file manager.
 #[tauri::command]
 pub fn reveal_path(app: tauri::AppHandle, path: String) -> Result<()> {

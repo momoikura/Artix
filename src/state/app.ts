@@ -12,6 +12,7 @@ import { copyContextBundle, exporters, runExport } from '../exporters/registry.t
 import { importers, runImport } from '../importers/registry.ts';
 import { BUILTIN_PLUGINS, PluginHost } from '../plugins/index.ts';
 import { createStorage, loadSettings, saveSettings } from '../storage/index.ts';
+import { isTauri } from '../storage/tauri-adapter.ts';
 import { downloadText, pickFolder, pickImportSources, pickSaveDestination } from '../services/dialogs.ts';
 import { useLibrary } from './library-store.ts';
 import { useUi, connectNotifications } from './ui-store.ts';
@@ -36,6 +37,11 @@ let instance: ArtixApp | null = null;
 export async function bootstrapApp(options: { demoSessions?: number } = {}): Promise<ArtixApp> {
   if (instance) return instance;
 
+  // The native window starts hidden (so the hook's `--sync` path can exit
+  // without a flash). Reveal it now that the webview is live — the boot splash
+  // in index.html covers the rest of the load.
+  void revealWindow();
+
   const storage = createStorage({ demoSessions: options.demoSessions ?? 0 });
   const plugins = new PluginHost(storage, APP_VERSION);
   for (const plugin of BUILTIN_PLUGINS) plugins.add(plugin, true);
@@ -50,12 +56,14 @@ export async function bootstrapApp(options: { demoSessions?: number } = {}): Pro
 
   const disposeCommands = registerCoreCommands(storage);
   const stopAutoSync = startAutoSync(storage, settings);
+  const disposeSyncBridge = connectSyncBridge(storage);
 
   instance = {
     storage,
     plugins,
     dispose: () => {
       stopAutoSync();
+      disposeSyncBridge();
       disposeCommands();
       disposeNotifications();
       void plugins.deactivateAll();
@@ -64,6 +72,52 @@ export async function bootstrapApp(options: { demoSessions?: number } = {}): Pro
   };
 
   return instance;
+}
+
+/**
+ * Bridge the native "sync requested" event to an incremental sync.
+ *
+ * The Claude Code SessionEnd hook launches `artix --sync`; the single-instance
+ * plugin forwards that to the running app as an event, which lands here and
+ * triggers exactly the same incremental sync the interval timer uses. That is
+ * what makes a finished session appear in the galaxy within a second or two,
+ * rather than at the next timer tick.
+ */
+function connectSyncBridge(storage: StorageAdapter): () => void {
+  if (!isTauri()) return () => {};
+
+  let unlisten: (() => void) | undefined;
+  let disposed = false;
+  let running = false;
+
+  void (async () => {
+    const { listen } = await import('@tauri-apps/api/event');
+    const stop = await listen('artix://sync-requested', async () => {
+      if (running) return;
+      running = true;
+      try {
+        const { syncClaudeSessions } = await import('../services/claude-code.ts');
+        const result = await syncClaudeSessions(storage, (sources) =>
+          runImport(storage, { sources }),
+        );
+        const changed = result.imported + result.updated;
+        if (changed > 0) {
+          notify('success', `Synced ${changed} session${changed === 1 ? '' : 's'} from Claude Code.`);
+        }
+      } catch (e) {
+        console.warn('[artix] hook-triggered sync failed', e);
+      } finally {
+        running = false;
+      }
+    });
+    if (disposed) stop();
+    else unlisten = stop;
+  })();
+
+  return () => {
+    disposed = true;
+    unlisten?.();
+  };
 }
 
 /**
@@ -132,6 +186,17 @@ function startAutoSync(storage: StorageAdapter, settings: AppSettings): () => vo
 
 export function getApp(): ArtixApp | null {
   return instance;
+}
+
+/** Show the native window (a no-op in the browser build). */
+async function revealWindow(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('show_main_window');
+  } catch {
+    // If the window cannot be shown the app is unusable anyway; nothing to do.
+  }
 }
 
 /** Persist settings and apply any side effects (plugin enable/disable). */

@@ -110,11 +110,64 @@ export function SettingsOverlay(): JSX.Element {
 
   const storage = getApp()?.storage;
 
+  // The SessionEnd hook's real state lives in ~/.claude/settings.json, not in
+  // Artix's own settings — read it directly so the toggle reflects reality.
+  const [hook, setHook] = useState<{ installed: boolean; unavailable: boolean; busy: boolean }>({
+    installed: false,
+    unavailable: true,
+    busy: false,
+  });
+
   useEffect(() => {
     const host = getApp()?.plugins;
     if (!host) return;
     return host.subscribe(() => setPlugins(host.manifests()));
   }, []);
+
+  useEffect(() => {
+    if (!storage) return;
+    let live = true;
+    void import('../services/session-hook.ts').then(async ({ sessionHookStatus }) => {
+      const status = await sessionHookStatus(storage);
+      if (live) setHook((h) => ({ ...h, installed: status.installed, unavailable: status.unavailable ?? false }));
+    });
+    return () => {
+      live = false;
+    };
+  }, [storage]);
+
+  const toggleHook = async (enable: boolean) => {
+    if (!storage) return;
+
+    if (enable) {
+      const proceed = window.confirm(
+        'Install an instant-sync hook into Claude Code?\n\n' +
+          'This adds a SessionEnd hook to ~/.claude/settings.json that runs Artix ' +
+          'when a session ends, so finished sessions appear here within seconds ' +
+          'instead of on a timer.\n\n' +
+          'It edits your global Claude Code config (only the Artix entry; ' +
+          'everything else is preserved) and runs a local command — nothing is ' +
+          'sent anywhere.',
+      );
+      if (!proceed) return;
+    }
+
+    setHook((h) => ({ ...h, busy: true }));
+    const { installSessionHook, removeSessionHook } = await import('../services/session-hook.ts');
+    const result = enable ? await installSessionHook(storage) : await removeSessionHook(storage);
+
+    if (result.ok) {
+      setHook((h) => ({ ...h, installed: enable, busy: false }));
+      notify(
+        'success',
+        enable ? 'Instant sync enabled.' : 'Instant sync disabled.',
+        enable ? 'New Claude Code sessions now sync the moment they end.' : undefined,
+      );
+    } else {
+      setHook((h) => ({ ...h, busy: false }));
+      notify('error', result.error.message, result.error.hint);
+    }
+  };
 
   const apply = (next: AppSettings) => {
     setDraft(next);
@@ -249,6 +302,28 @@ export function SettingsOverlay(): JSX.Element {
           </select>
         </div>
       </div>
+
+      {!hook.unavailable && (
+        <div className="field">
+          <div>
+            <div className="field__label">Instant sync (Claude Code hook)</div>
+            <div className="field__hint">
+              Sync the moment a Claude Code session ends, instead of waiting for the timer. Adds a
+              SessionEnd hook to <code>~/.claude/settings.json</code>; only the Artix entry is
+              touched, and it runs a local command — nothing is sent anywhere.
+            </div>
+          </div>
+          <button
+            className="switch"
+            data-on={hook.installed}
+            role="switch"
+            aria-checked={hook.installed}
+            aria-label="Instant sync hook"
+            disabled={hook.busy}
+            onClick={() => void toggleHook(!hook.installed)}
+          />
+        </div>
+      )}
 
       <Toggle
         label="Skip duplicates"
