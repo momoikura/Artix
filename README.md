@@ -121,11 +121,17 @@ imports only after you confirm.
 Artix is not Claude-Code-only. How a tool's history reaches Artix depends on
 where that history lives:
 
-| Tool | How |
-| --- | --- |
-| **Claude Code** | Read directly from `~/.claude/projects` — nothing to export. |
-| **ChatGPT** | *Settings → Data controls → Export.* Artix reads the `conversations.json` it emails you. |
-| **Claude.ai / Gemini / others** | Use the tool's data export; Artix imports the resulting JSON, Markdown or text. |
+| Tool | How | Needs an export? |
+| --- | --- | --- |
+| **Claude Code** | Read directly from `~/.claude/projects` | No — automatic |
+| **GitHub Copilot Chat** | Read directly from VS Code's `workspaceStorage` | No — automatic |
+| **ChatGPT** | *Settings → Data controls → Export* → `conversations.json` | Yes |
+| **Perplexity** | Export/copy a thread as Markdown (sources preserved) | Yes |
+| **Claude.ai / Gemini / others** | Any data export — JSON, Markdown or text | Yes |
+
+Tools that keep history **on your machine** are imported directly with no
+export step. Tools that keep it **on their servers** are imported from the
+export they give you.
 
 > [!IMPORTANT]
 > **Websites are imported from their exports, never scraped.** Artix has no
@@ -140,7 +146,21 @@ it becomes stars in your galaxy — no manual step.
 
 The format is auto-detected, so a single watched folder can mix a ChatGPT
 export, a Claude.ai export and a Markdown transcript, and each is handled
-correctly. New formats are one importer away — see [docs/PLUGINS.md](docs/PLUGINS.md).
+correctly.
+
+**Adding a tool is one importer.** Each source is a self-contained module
+implementing `detect()` and `parse()`, registered in the importer registry —
+no core changes. Ship it as a plugin or send a PR; see
+[docs/PLUGINS.md](docs/PLUGINS.md).
+
+> [!NOTE]
+> The Claude Code, ChatGPT and Copilot importers were built and verified against
+> real transcripts. The Perplexity importer was written without a sample to test
+> against, so its detection is deliberately conservative — it only claims files
+> carrying an explicit Perplexity marker, and anything else falls through to the
+> Markdown importer. If it misreads your export, please
+> [open an issue](https://github.com/momoikura/Artix/issues) describing the
+> shape (never paste real content).
 
 ### Staying in sync automatically
 

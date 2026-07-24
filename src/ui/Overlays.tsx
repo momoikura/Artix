@@ -324,6 +324,13 @@ export function SettingsOverlay(): JSX.Element {
         </div>
       </div>
 
+      <Toggle
+        label="Sync GitHub Copilot Chat"
+        hint="Copilot stores its history locally in VS Code, so it imports directly — no export needed. Ignored if VS Code isn't installed."
+        value={draft.import.syncCopilot}
+        onChange={(syncCopilot) => apply({ ...draft, import: { ...draft.import, syncCopilot } })}
+      />
+
       {!hook.unavailable && (
         <div className="field">
           <div>

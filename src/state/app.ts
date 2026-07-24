@@ -149,14 +149,20 @@ function startAutoSync(storage: StorageAdapter, settings: AppSettings): () => vo
       const { syncClaudeSessions } = await import('../services/claude-code.ts');
       const cc = await syncClaudeSessions(storage, importSources);
 
-      // 2. Watched folders — where exports from ChatGPT, Claude.ai, Gemini and
+      // 2. Copilot Chat — also stored locally, so it needs no export step.
+      const { syncCopilotSessions } = await import('../services/copilot-source.ts');
+      const cp = settings.import.syncCopilot
+        ? await syncCopilotSessions(storage, importSources)
+        : null;
+
+      // 3. Watched folders — where exports from ChatGPT, Claude.ai, Gemini and
       //    anything else land. The importer registry auto-detects each format.
       const { syncWatchedFolders } = await import('../services/folder-sync.ts');
       const folders = settings.import.watchedFolders;
       const wf = folders.length > 0 ? await syncWatchedFolders(storage, folders, importSources) : null;
 
-      const imported = cc.imported + (wf?.imported ?? 0);
-      const updated = cc.updated + (wf?.updated ?? 0);
+      const imported = cc.imported + (cp?.imported ?? 0) + (wf?.imported ?? 0);
+      const updated = cc.updated + (cp?.updated ?? 0) + (wf?.updated ?? 0);
       const changed = imported + updated;
 
       if (changed > 0) {

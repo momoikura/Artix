@@ -47,6 +47,11 @@ export interface ImportSettings {
   /** Minutes between background syncs. */
   autoSyncMinutes: number;
   /**
+   * Also sync GitHub Copilot Chat from VS Code's local storage. Like Claude
+   * Code it needs no export step, so it is on by default when present.
+   */
+  syncCopilot: boolean;
+  /**
    * Extra directories the user has pointed Artix at. Scanned only when a scan
    * is explicitly triggered.
    */
@@ -92,6 +97,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   import: {
     autoSync: true,
     autoSyncMinutes: 10,
+    syncCopilot: true,
     watchedFolders: [],
     scanOnLaunch: false,
     extensions: ['jsonl', 'json', 'md', 'markdown', 'txt'],

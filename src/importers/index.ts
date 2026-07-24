@@ -3,6 +3,8 @@
 export * from './types.ts';
 export { claudeJsonlImporter, parseJsonlTranscript } from './claude-jsonl.ts';
 export { chatgptImporter, parseChatgptExport } from './chatgpt.ts';
+export { copilotImporter, parseCopilotSession } from './copilot.ts';
+export { perplexityImporter, parsePerplexityThread } from './perplexity.ts';
 export { jsonImporter, parseJson } from './json.ts';
 export type { ArtixExport } from './json.ts';
 export { markdownImporter, parseMarkdownTranscript, splitFrontMatter } from './markdown.ts';

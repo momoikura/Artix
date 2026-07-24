@@ -11,6 +11,8 @@ import { buildSession, computeSessionHash } from '../core/session.ts';
 import { newId } from '../core/id.ts';
 import { claudeJsonlImporter } from './claude-jsonl.ts';
 import { chatgptImporter } from './chatgpt.ts';
+import { copilotImporter } from './copilot.ts';
+import { perplexityImporter } from './perplexity.ts';
 import { jsonImporter } from './json.ts';
 import { markdownImporter } from './markdown.ts';
 import { textImporter } from './text.ts';
@@ -97,6 +99,8 @@ export class ImporterRegistry {
 export const importers = new ImporterRegistry();
 importers.register(claudeJsonlImporter);
 importers.register(chatgptImporter);
+importers.register(copilotImporter);
+importers.register(perplexityImporter);
 importers.register(jsonImporter);
 importers.register(markdownImporter);
 importers.register(textImporter);
