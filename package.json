@@ -1,7 +1,7 @@
 {
   "name": "artix",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Artix — a local-first long-term memory operating system for Claude Code sessions, explored as a galaxy.",
   "license": "MIT",

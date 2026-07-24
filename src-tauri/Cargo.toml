@@ -1,6 +1,6 @@
 [package]
 name = "artix"
-version = "0.1.1"
+version = "0.1.2"
 description = "Artix — local-first memory for Claude Code sessions"
 authors = ["Artix contributors"]
 edition = "2021"
